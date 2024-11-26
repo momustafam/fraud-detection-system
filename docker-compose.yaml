@@ -1,0 +1,70 @@
+version: '3.9'
+
+services:
+  zookeeper:
+    image: zookeeper
+    restart: always
+    container_name: zookeeper
+    hostname: zookeeper
+    ports:
+      - 2181:2181
+    environment:
+      ZOO_MY_ID: 1
+    networks:
+      - fraud-detection-system-network
+
+  kafka:
+    image: wurstmeister/kafka
+    container_name: kafka
+    ports:
+      - 9092:9092
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "transaction:1:1"
+    depends_on:
+      - zookeeper
+    networks:
+      - fraud-detection-system-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: bank
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - fraud-detection-system-network
+
+  fraud-detection-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - kafka
+      - mysql
+    environment:
+      KAFKA_BROKER: kafka:9092
+      TOPIC_NAME: transaction
+      DATA_PATH: ./data/transactions.csv
+      MODEL_PATH: ./pre_trained_models/nb_model.joblib
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PASSWORD: root
+      MYSQL_DATABASE: bank
+    networks:
+      - fraud-detection-system-network
+    entrypoint: /bin/sh -c "sleep 20 && python main.py"
+
+networks:
+  fraud-detection-system-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
+    driver: local
